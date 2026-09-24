@@ -5,6 +5,7 @@ import pytest
 
 import hgvs.edit
 import hgvs.location
+import hgvs.posedit
 from hgvs.enums import Datum
 from hgvs.exceptions import HGVSError
 
@@ -84,6 +85,37 @@ class Test_Edit(unittest.TestCase):
         self.assertEqual(str(hgvs.edit.AAExt("A", "V", "*", 10).type), "ext")
         self.assertEqual(str(hgvs.edit.AAExt("A", "V", None, -10).type), "ext")
         self.assertEqual(str(hgvs.edit.AAExt("A", None, None, -5).type), "ext")
+
+    def test_AAExt_issue804(self):
+        # https://github.com/biocommons/hgvs/issues/804
+        # HGVS spec 21.1.3: an N-terminal extension is "Met1ext-5" -- aaterm
+        # must not be embedded in the description (it supersedes the legacy
+        # "Met1extMet-5" form).
+        n_term = hgvs.posedit.PosEdit(
+            pos=hgvs.location.Interval(
+                start=hgvs.location.AAPosition(base=1, aa="M"),
+                end=hgvs.location.AAPosition(base=1, aa="M"),
+            ),
+            edit=hgvs.edit.AAExt(ref="M", aaterm="LGM", length=-2),
+        )
+        self.assertEqual(str(n_term), "Met1ext-2")
+
+        # A C-terminal extension is "Ter110GlnextTer17": the aa replacing the
+        # stop codon, then extTer, then the extension length.  A multi-residue
+        # aaterm tail sequence must be reduced to those two slots.
+        c_term = hgvs.posedit.PosEdit(
+            pos=hgvs.location.Interval(
+                start=hgvs.location.AAPosition(base=10, aa="*"),
+                end=hgvs.location.AAPosition(base=10, aa="*"),
+            ),
+            edit=hgvs.edit.AAExt(ref="*", aaterm="LG*", length=2),
+        )
+        self.assertEqual(str(c_term), "Ter10LeuextTer2")
+
+        # spec-conformant constructions are unchanged
+        self.assertEqual(str(hgvs.edit.AAExt(ref="", alt=None, aaterm="M", length=-5)), "ext-5")
+        self.assertEqual(str(hgvs.edit.AAExt(ref="", alt="Q", aaterm="*", length=17)), "GlnextTer17")
+        self.assertEqual(str(hgvs.edit.AAExt(ref="", alt="R", aaterm="*", length="?")), "ArgextTer?")
 
     def test_Dup(self):
         self.assertEqual(str(hgvs.edit.Dup()), "dup")
