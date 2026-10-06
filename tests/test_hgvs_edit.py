@@ -117,6 +117,37 @@ class Test_Edit(unittest.TestCase):
         self.assertEqual(str(hgvs.edit.AAExt(ref="", alt="Q", aaterm="*", length=17)), "GlnextTer17")
         self.assertEqual(str(hgvs.edit.AAExt(ref="", alt="R", aaterm="*", length="?")), "ArgextTer?")
 
+    def test_AAExt_issue804_roundtrip(self):
+        # Full-circle: every pdot string the formatter emits must parse back
+        # to a variant that re-formats identically.
+        # https://github.com/biocommons/hgvs/issues/804
+        from hgvs.parsers import Parser
+
+        parser = Parser()
+        # formatted pdot -> expected re-formatted pdot (identity when already
+        # spec-conformant; legacy forms normalize to the spec 21.1.3 shape)
+        roundtrips = [
+            ("Met1ext-2", "Met1ext-2"),
+            ("Ter10LeuextTer2", "Ter10LeuextTer2"),
+            ("Ter110GlnextTer17", "Ter110GlnextTer17"),
+            ("Ter10extTer2", "Ter10extTer2"),
+            # legacy single-residue N-terminal form: aaterm is dropped
+            ("Met1extMet-5", "Met1ext-5"),
+            # legacy multi-residue tails (as older formatters emitted):
+            # reduced to the spec slots on format
+            ("Met1extLeuGlyMet-2", "Met1ext-2"),
+            ("Ter10GlnextLG*17", "Ter10GlnextTer17"),
+            ("Ter10extLG*17", "Ter10LeuextTer17"),
+        ]
+        for pdot, expected in roundtrips:
+            with self.subTest(pdot=pdot):
+                var = parser.parse_hgvs_variant("NP_000000.0:p." + pdot)
+                reformatted = str(var.posedit)
+                self.assertEqual(reformatted, expected)
+                # second lap: the normalized form is a fixed point
+                var2 = parser.parse_hgvs_variant("NP_000000.0:p." + reformatted)
+                self.assertEqual(str(var2.posedit), expected)
+
     def test_Dup(self):
         self.assertEqual(str(hgvs.edit.Dup()), "dup")
         self.assertEqual(hgvs.edit.Dup("T").format(conf={"max_ref_length": None}), "dupT")
